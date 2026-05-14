@@ -1,100 +1,89 @@
-test_that("conn_fhir builds correct object", {
-  conn <- conn_fhir(
-    base_url      = "https://hapi.fhir.org/baseR4",
-    resource_type = "Patient",
-    schema_map    = list(patient_id = "id", family_name = "name.family")
-  )
-  expect_s3_class(conn, "conn_fhir")
-  expect_s3_class(conn, "OntologyConnector")
-  expect_equal(conn$resource_type, "Patient")
+test_that("live_fhir returns LiveFhirConnection", {
+  sm <- make_rest_schema_map("Patient", "Patient",
+                              list(patient_id = "id", family_name = "name[0].family"),
+                              pk = "patient_id")
+  conn <- live_fhir(sm, "https://hapi.fhir.org/baseR4")
+  expect_s4_class(conn, "LiveFhirConnection")
+  expect_equal(conn@source_type, "fhir")
 })
 
-test_that("conn_supports_filter.conn_fhir: supported ops", {
-  conn <- conn_fhir("https://x.com", "Patient",
-                     schema_map = list(id = "id"))
-  expect_true(conn_supports_filter(conn, "eq"))
-  expect_true(conn_supports_filter(conn, "contains"))
-  expect_true(conn_supports_filter(conn, "gt"))
-  expect_true(conn_supports_filter(conn, "gte"))
-  expect_true(conn_supports_filter(conn, "lt"))
-  expect_true(conn_supports_filter(conn, "lte"))
-  expect_true(conn_supports_filter(conn, "in"))
-  expect_false(conn_supports_filter(conn, "starts_with"))
-  expect_false(conn_supports_filter(conn, "is_null"))
+test_that("live_fhir validates schema_map", {
+  bad <- list(P = list(name = "Patient"))
+  expect_error(live_fhir(bad, "https://x.com"), class = "rlang_error")
 })
 
-test_that("fhir_filters_to_params maps ops correctly", {
-  # Access internal function via :::
-  params <- ontologyConnectR:::fhir_filters_to_params(
-    list(
-      list(property = "family_name", op = "eq",  value = "Smith"),
-      list(property = "birth_date",  op = "gt",  value = "1980-01-01"),
-      list(property = "gender",      op = "in",  value = c("male", "female"))
-    ),
-    schema_map = list(family_name = "name.family", birth_date = "birthDate",
-                      gender = "gender")
-  )
-  expect_equal(params[["family"]], "Smith")
-  expect_equal(params[["birthdate"]], "gt1980-01-01")
-  expect_equal(params[["gender"]], "male,female")
+test_that("fhir_filter_value: eq returns value as-is", {
+  expect_equal(ontologyConnectR:::fhir_filter_value("=", "Smith"), "Smith")
 })
 
-test_that("fhir_filters_to_params: contains uses :contains modifier", {
-  params <- ontologyConnectR:::fhir_filters_to_params(
-    list(list(property = "family_name", op = "contains", value = "smi")),
-    schema_map = list(family_name = "name.family")
-  )
-  expect_equal(params[["family:contains"]], "smi")
+test_that("fhir_filter_value: gt returns gt-prefixed value", {
+  expect_equal(ontologyConnectR:::fhir_filter_value(">", "1990-01-01"), "gt1990-01-01")
 })
 
-test_that("eval_fhirpath handles simple field", {
-  node <- list(id = "patient-1", gender = "female")
-  result <- ontologyConnectR:::eval_fhirpath(node, "gender")
-  expect_equal(result, "female")
+test_that("fhir_filter_value: gte returns ge-prefixed value", {
+  expect_equal(ontologyConnectR:::fhir_filter_value(">=", "1990-01-01"), "ge1990-01-01")
 })
 
-test_that("eval_fhirpath handles dot notation", {
-  node <- list(name = list(list(use = "official", family = "Smith")))
-  result <- ontologyConnectR:::eval_fhirpath(node, "name[0].family")
-  expect_equal(result, "Smith")
+test_that("fhir_filter_value: IN joins with comma", {
+  expect_equal(ontologyConnectR:::fhir_filter_value("IN", c("active", "inactive")),
+               "active,inactive")
 })
 
-test_that("eval_fhirpath handles .where(use='official')", {
+test_that("fhir_filter_value: unknown op returns NULL", {
+  expect_null(ontologyConnectR:::fhir_filter_value("RAW_SQL", "x"))
+})
+
+test_that("extract_fhir_bundle extracts resources from Bundle", {
+  bundle <- list(entry = list(
+    list(resource = list(id = "p1", resourceType = "Patient")),
+    list(resource = list(id = "p2", resourceType = "Patient"))
+  ))
+  res <- ontologyConnectR:::extract_fhir_bundle(bundle)
+  expect_length(res, 2)
+  expect_equal(res[[1]]$id, "p1")
+})
+
+test_that("fhir_next_link: returns NULL when no next relation", {
+  bundle <- list(link = list(list(relation = "self", url = "https://x.com")))
+  expect_null(ontologyConnectR:::fhir_next_link(bundle))
+})
+
+test_that("fhir_next_link: returns URL for next relation", {
+  bundle <- list(link = list(
+    list(relation = "self", url = "https://x.com/Patient"),
+    list(relation = "next", url = "https://x.com/Patient?page=2")
+  ))
+  expect_equal(ontologyConnectR:::fhir_next_link(bundle),
+               "https://x.com/Patient?page=2")
+})
+
+test_that("eval_fhirpath: simple field", {
+  node <- list(id = "p1", gender = "female")
+  expect_equal(ontologyConnectR:::eval_fhirpath(node, "gender"), "female")
+})
+
+test_that("eval_fhirpath: bracket index", {
+  node <- list(name = list(list(family = "Smith"), list(family = "Jones")))
+  expect_equal(ontologyConnectR:::eval_fhirpath(node, "name[0].family"), "Smith")
+})
+
+test_that("eval_fhirpath: .where(use='official')", {
   node <- list(name = list(
     list(use = "nickname", family = "Smitty"),
     list(use = "official", family = "Smith")
   ))
-  result <- ontologyConnectR:::eval_fhirpath(
-    node, "name.where(use='official').family"
+  expect_equal(
+    ontologyConnectR:::eval_fhirpath(node, "name.where(use='official').family"),
+    "Smith"
   )
-  expect_equal(result, "Smith")
 })
 
-test_that("extract_fhir_resources extracts from Bundle entry", {
-  bundle <- list(
-    resourceType = "Bundle",
-    entry = list(
-      list(resource = list(id = "p1", resourceType = "Patient")),
-      list(resource = list(id = "p2", resourceType = "Patient"))
-    )
-  )
-  resources <- ontologyConnectR:::extract_fhir_resources(bundle)
-  expect_length(resources, 2)
-  expect_equal(resources[[1]]$id, "p1")
-})
-
-test_that("get_fhir_next_url returns NULL when no next link", {
-  bundle <- list(link = list(
-    list(relation = "self", url = "https://x.com/Patient")
-  ))
-  expect_null(ontologyConnectR:::get_fhir_next_url(bundle))
-})
-
-test_that("get_fhir_next_url returns next URL when present", {
-  bundle <- list(link = list(
-    list(relation = "self", url = "https://x.com/Patient"),
-    list(relation = "next", url = "https://x.com/Patient?_page=2")
-  ))
-  result <- ontologyConnectR:::get_fhir_next_url(bundle)
-  expect_equal(result, "https://x.com/Patient?_page=2")
+test_that("live_execute: schema query returns empty df with FHIR columns", {
+  sm   <- make_rest_schema_map("Patient", "Patient",
+                                list(patient_id = "id", gender = "gender"))
+  conn <- methods::new("LiveFhirConnection",
+    source_type = "fhir", schema_map = sm, cache = NULL, config = list())
+  df <- ontologyConnectR:::live_execute(conn, 'SELECT * FROM "Patient" WHERE (0 = 1)')
+  expect_equal(nrow(df), 0L)
+  expect_named(df, c("patient_id", "gender"))
 })

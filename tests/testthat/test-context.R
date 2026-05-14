@@ -1,62 +1,48 @@
-test_that("ontology_context creates OntologyContext with connector", {
-  bundle <- make_test_bundle(c("Patient", "Encounter"))
-  mock   <- make_mock_connector(data.frame(id = 1))
-  ctx    <- ontology_context(bundle, connectors = list(Patient = mock))
-
+test_that("ontology_context creates OntologyContext with live_connections", {
+  bundle <- make_test_bundle("Patient")
+  sm     <- make_rest_schema_map("Patient", "patients",
+                                  list(patient_id = "id", name = "name"))
+  conn   <- methods::new("LiveRestConnection",
+    source_type = "rest", schema_map = sm, cache = NULL, config = list())
+  ctx <- ontology_context(bundle, live_connections = list(Patient = conn))
   expect_s3_class(ctx, "OntologyContext")
-  expect_named(ctx$connectors, "Patient")
+  expect_named(ctx$live_connections, "Patient")
 })
 
-test_that("ontology_context with NULL connection and all connectors is valid", {
+test_that("strict mode rejects unknown type IDs in live_connections", {
   bundle <- make_test_bundle("Patient")
-  mock   <- make_mock_connector(data.frame(id = 1))
-  expect_no_error(
-    ontology_context(bundle, connection = NULL,
-                     connectors = list(Patient = mock))
-  )
-})
-
-test_that("object_set routes to ConnectorObjectSet for connector types", {
-  bundle <- make_test_bundle(c("Patient", "Encounter"))
-  mock   <- make_mock_connector(data.frame(id = 1))
-  ctx    <- ontology_context(bundle, connectors = list(Patient = mock))
-
-  os <- object_set(ctx, "Patient")
-  expect_s3_class(os, "ConnectorObjectSet")
-})
-
-test_that("object_set routes to DbiObjectSet for non-connector types", {
-  bundle <- make_test_bundle(c("Patient", "Encounter"))
-  mock   <- make_mock_connector(data.frame(id = 1))
-  con    <- list()  # fake DBI connection
-  ctx    <- ontology_context(bundle, connection = con,
-                              connectors = list(Patient = mock))
-
-  os <- object_set(ctx, "Encounter")
-  expect_s3_class(os, "DbiObjectSet")
-})
-
-test_that("object_set errors for unknown type without connection", {
-  bundle <- make_test_bundle("Patient")
-  mock   <- make_mock_connector(data.frame(id = 1))
-  ctx    <- ontology_context(bundle, connectors = list(Patient = mock))
-
-  expect_error(object_set(ctx, "Unknown"), class = "rlang_error")
-})
-
-test_that("strict mode errors on unknown connector IDs", {
-  bundle <- make_test_bundle("Patient")
-  mock   <- make_mock_connector(data.frame(id = 1))
+  sm     <- make_rest_schema_map("X", "x", list(id = "id"))
+  conn   <- methods::new("LiveRestConnection",
+    source_type = "rest", schema_map = sm, cache = NULL, config = list())
   expect_error(
-    ontology_context(bundle, connectors = list(Unknown = mock), strict = TRUE),
+    ontology_context(bundle, live_connections = list(X = conn), strict = TRUE),
     class = "rlang_error"
   )
 })
 
-test_that("print.OntologyContext outputs informative text", {
+test_that("print.OntologyContext prints informative output", {
   bundle <- make_test_bundle(c("Patient", "Encounter"))
-  mock   <- make_mock_connector(data.frame(id = 1))
-  ctx    <- ontology_context(bundle, connectors = list(Patient = mock))
-  out    <- capture.output(print(ctx))
+  sm     <- make_rest_schema_map("Patient", "patients", list(id = "id"))
+  conn   <- methods::new("LiveRestConnection",
+    source_type = "rest", schema_map = sm, cache = NULL, config = list())
+  ctx <- ontology_context(bundle, live_connections = list(Patient = conn))
+  out <- capture.output(print(ctx))
   expect_true(any(grepl("OntologyContext", out)))
+})
+
+test_that("object_set routes live type to dplyr::tbl via LiveConnection", {
+  skip_if_not_installed("dplyr")
+  skip_if_not_installed("duckdb")
+
+  fixture_dir <- icij_fixture_dir()
+  skip_if(!nzchar(fixture_dir), "ICIJ fixture not found")
+
+  conn   <- live_icij(csv_dir = fixture_dir)
+  bundle <- list(
+    object_types = list(Entity = list(id = "Entity", extensions = list())),
+    link_types   = list()
+  )
+  ctx <- ontology_context(bundle, live_connections = list(Entity = conn))
+  os  <- object_set(ctx, "Entity")
+  expect_true(inherits(os, "tbl"))
 })
