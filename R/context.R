@@ -1,127 +1,140 @@
-#' Create an ontology context with optional live-source connectors
+#' Create an ontology context with optional live-source connections
 #'
-#' Wraps an ontology bundle (from ontologySpecR) and associates live-source
-#' connectors with specific object types. When a connector is present for an
-#' object type, queries use the connector instead of a DBI connection.
+#' Associates a bundle with DBI and/or live source connections. Object types
+#' backed by a live connection are served via that connection's dbplyr backend;
+#' others fall back to the DBI \code{connection}.
 #'
-#' @param bundle An ontology bundle (list with `$object_types` named list).
-#' @param connection A DBI connection, or NULL if all types have connectors.
-#' @param connectors Named list of OntologyConnector objects. Names must match
-#'   object_type IDs in the bundle.
-#' @param strict Logical. If TRUE, error on unknown object type IDs in connectors.
-#' @param check_interfaces Logical. If TRUE, warn when connectors are missing
-#'   required methods.
-#' @return An `OntologyContext` object.
+#' @param bundle An ontology bundle — a list with \code{$object_types} (named
+#'   list) and \code{$link_types} (named list).
+#' @param connection A DBI connection, or NULL when all types have live
+#'   connections.
+#' @param live_connections Named list of \code{LiveConnection} objects. Names
+#'   must match object type IDs in the bundle.
+#' @param strict Logical. If TRUE, abort on unknown object type IDs in
+#'   \code{live_connections}.
+#' @param check_interfaces Logical. Reserved; currently unused.
+#' @return An \code{OntologyContext} list.
 #' @export
 ontology_context <- function(bundle,
-                              connection = NULL,
-                              connectors = list(),
-                              strict = FALSE,
+                              connection       = NULL,
+                              live_connections = list(),
+                              strict           = FALSE,
                               check_interfaces = TRUE) {
-  if (!is.list(connectors) || (length(connectors) > 0 && is.null(names(connectors)))) {
-    cli::cli_abort("{.arg connectors} must be a named list.")
+  if (!is.list(live_connections) ||
+      (length(live_connections) > 0 && is.null(names(live_connections)))) {
+    cli::cli_abort("{.arg live_connections} must be a named list.")
   }
 
-  # Determine available object type IDs
   ot_ids <- names(bundle$object_types)
 
-  if (strict && length(connectors) > 0) {
-    unknown <- setdiff(names(connectors), ot_ids)
-    if (length(unknown) > 0) {
+  if (strict && length(live_connections) > 0) {
+    unknown <- setdiff(names(live_connections), ot_ids)
+    if (length(unknown)) {
       cli::cli_abort(
-        "Unknown object type IDs in {.arg connectors}: {.val {unknown}}"
+        "Unknown object type IDs in {.arg live_connections}: {.val {unknown}}"
       )
     }
   }
 
-  if (check_interfaces) {
-    for (nm in names(connectors)) {
-      conn <- connectors[[nm]]
-      if (!is.function(try(conn_fetch, silent = TRUE))) next
-    }
-  }
-
-  # Validate that DBI connection is provided when needed
-  dbi_types <- setdiff(ot_ids, names(connectors))
+  dbi_types <- setdiff(ot_ids, names(live_connections))
   if (length(dbi_types) > 0 && is.null(connection)) {
     cli::cli_warn(c(
-      "Some object types have no connector and no DBI connection.",
-      i = "Types without connector: {.val {dbi_types}}"
+      "Some object types have no live connection and no DBI connection.",
+      i = "Types without live connection: {.val {dbi_types}}"
     ))
   }
 
-  ctx <- structure(
+  structure(
     list(
-      bundle     = bundle,
-      connection = connection,
-      connectors = connectors
+      bundle           = bundle,
+      connection       = connection,
+      live_connections = live_connections
     ),
     class = "OntologyContext"
   )
-  ctx
 }
 
 #' @export
 print.OntologyContext <- function(x, ...) {
-  ot_ids    <- names(x$bundle$object_types)
-  conn_ids  <- names(x$connectors)
-  dbi_ids   <- setdiff(ot_ids, conn_ids)
-
+  ot_ids   <- names(x$bundle$object_types)
+  live_ids <- names(x$live_connections)
+  dbi_ids  <- setdiff(ot_ids, live_ids)
   cli::cli_h1("OntologyContext")
   cli::cli_bullets(c(
     "*" = "Object types: {length(ot_ids)}",
-    "*" = "Live connector types: {length(conn_ids)} ({.val {conn_ids}})",
-    "*" = "DBI-backed types: {length(dbi_ids)} ({.val {dbi_ids}})"
+    "*" = "Live connections: {length(live_ids)} ({.val {live_ids}})",
+    "*" = "DBI-backed: {length(dbi_ids)} ({.val {dbi_ids}})"
   ))
   invisible(x)
 }
 
-#' Get or create an object set for an object type
+#' Get a tbl for an object type
 #'
-#' Dispatches to a `ConnectorObjectSet` if the type has a live connector,
-#' or falls back to a DBI-backed object set.
+#' Returns \code{dplyr::tbl(live_con, object_type_id)} for types backed by a
+#' live connection, or \code{dplyr::tbl(dbi_con, table_name)} otherwise.
+#' Because both paths return a dbplyr lazy tbl, all downstream \code{os_*}
+#' operations work identically.
 #'
-#' @param ctx An `OntologyContext`.
-#' @param object_type_id Character scalar. The object type ID.
-#' @return An object set (ConnectorObjectSet or DBI-backed ObjectSet).
+#' @param ctx An \code{OntologyContext}.
+#' @param object_type_id Character scalar.
+#' @return A lazy \code{tbl} object (class \code{tbl_dbi} / \code{tbl_lazy}).
 #' @export
 object_set <- function(ctx, object_type_id) {
   if (!inherits(ctx, "OntologyContext")) {
     cli::cli_abort("{.arg ctx} must be an {.cls OntologyContext}.")
   }
-  if (object_type_id %in% names(ctx$connectors)) {
-    connector_object_set(ctx, object_type_id)
-  } else {
-    dbi_object_set(ctx, object_type_id)
-  }
-}
 
-#' Create a DBI-backed object set (internal fallback)
-#' @param ctx OntologyContext
-#' @param object_type_id character
-#' @return a list with class ObjectSet
-dbi_object_set <- function(ctx, object_type_id) {
+  if (object_type_id %in% names(ctx$live_connections)) {
+    live_con <- ctx$live_connections[[object_type_id]]
+    if (requireNamespace("dplyr", quietly = TRUE)) {
+      return(dplyr::tbl(live_con, object_type_id))
+    }
+    # Fallback without dplyr: return a thin wrapper
+    return(live_object_set(live_con, object_type_id))
+  }
+
+  # DBI path
   if (is.null(ctx$connection)) {
     cli::cli_abort(
-      "No DBI connection and no connector for type {.val {object_type_id}}."
+      "No live connection and no DBI connection for type {.val {object_type_id}}."
     )
   }
   ot <- ctx$bundle$object_types[[object_type_id]]
   if (is.null(ot)) {
     cli::cli_abort("Unknown object type: {.val {object_type_id}}.")
   }
-  table_name <- ot$table_name %||% object_type_id
+  if (requireNamespace("dplyr", quietly = TRUE)) {
+    tbl_name <- ot$table_name %||% object_type_id
+    return(dplyr::tbl(ctx$connection, tbl_name))
+  }
+  cli::cli_abort("Package {.pkg dplyr} is required for {.fn object_set}.")
+}
+
+# Thin wrapper used when dplyr is not available --------------------------
+
+live_object_set <- function(live_con, object_type_id) {
   structure(
-    list(
-      ctx            = ctx,
-      object_type_id = object_type_id,
-      table_name     = table_name,
-      pending_filters = list(),
-      pending_select  = NULL,
-      pending_limit   = NULL
-    ),
-    class = c("DbiObjectSet", "ObjectSet")
+    list(con = live_con, type_id = object_type_id),
+    class = "LiveObjectSet"
   )
+}
+
+#' Collect results from a LiveObjectSet (no-dplyr fallback)
+#' @export
+os_collect <- function(x, ...) UseMethod("os_collect")
+
+#' @export
+os_collect.LiveObjectSet <- function(x, ...) {
+  sql <- paste0('SELECT * FROM "', x$type_id, '"')
+  DBI::dbGetQuery(x$con, sql)
+}
+
+#' @export
+os_collect.default <- function(x, ...) {
+  if (requireNamespace("dplyr", quietly = TRUE)) {
+    return(dplyr::collect(x))
+  }
+  cli::cli_abort("Package {.pkg dplyr} is required.")
 }
 
 `%||%` <- function(a, b) if (is.null(a)) b else a
