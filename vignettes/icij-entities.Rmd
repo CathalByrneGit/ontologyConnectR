@@ -1,0 +1,132 @@
+---
+title: "ICIJ Offshore Leaks: Graph Analysis with ontologyConnectR"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{ICIJ Offshore Leaks: Graph Analysis with ontologyConnectR}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>", eval = FALSE)
+```
+
+## Overview
+
+The ICIJ Offshore Leaks database exposes millions of records from the Panama
+Papers, Pandora Papers, and other leaks. `ontologyConnectR` ships a bundled
+sample and a `conn_icij()` connector that wraps it in the standard
+OntologyConnector interface.
+
+This vignette shows how to query entities, filter by jurisdiction, and load
+`officer_of` edges to find the people behind shell companies.
+
+## Loading the connectors
+
+```{r setup-conn}
+library(ontologyConnectR)
+
+# Uses the bundled sample — no download needed
+entity_conn      <- conn_icij("Entity")
+officer_conn     <- conn_icij("Officer")
+intermediary_conn <- conn_icij("Intermediary")
+
+# Or point at your own ICIJ CSV directory:
+# entity_conn <- conn_icij("Entity", csv_dir = "~/data/icij")
+```
+
+## Building the context
+
+```{r context}
+bundle <- list(
+  object_types = list(
+    Entity      = list(id = "Entity",      extensions = list()),
+    Officer     = list(id = "Officer",     extensions = list()),
+    Intermediary = list(id = "Intermediary", extensions = list())
+  ),
+  link_types = list()
+)
+
+ctx <- ontology_context(
+  bundle     = bundle,
+  connectors = list(
+    Entity       = entity_conn,
+    Officer      = officer_conn,
+    Intermediary = intermediary_conn
+  )
+)
+```
+
+## Querying entities
+
+```{r query-entities}
+# All Panama Papers entities in the British Virgin Islands
+bvi_panama <- object_set(ctx, "Entity") |>
+  os_filter("source_id",    "eq", "Panama Papers") |>
+  os_filter("jurisdiction", "eq", "BVI") |>
+  os_collect()
+
+nrow(bvi_panama)
+head(bvi_panama[, c("name", "status", "incorporation_date")])
+```
+
+## Counting by filter
+
+```{r count}
+os_count(
+  os_filter(object_set(ctx, "Entity"), "source_id", "eq", "Panama Papers")
+)
+```
+
+## Inspecting the pending query
+
+```{r show-query}
+os <- object_set(ctx, "Entity") |>
+  os_filter("jurisdiction", "eq", "PAN") |>
+  os_limit(100L)
+
+os_show_query(os)
+# ConnectorObjectSet [Entity]
+#   Connector: conn_icij
+#   Pending filters (1):
+#     jurisdiction eq PAN
+#   Limit: 100
+```
+
+## Loading edges for graph analysis
+
+The `icij_load_edges()` function loads the `edges.csv` file which records
+relationships between entities, officers, and intermediaries:
+
+```{r edges}
+edges <- icij_load_edges()   # uses the bundled sample
+
+# Find all officers connected to a specific entity
+officer_of <- edges[edges$rel_type == "officer_of", ]
+head(officer_of[, c("node_id_start", "node_id_end", "rel_type")])
+
+# Join with officer data
+officers <- conn_fetch(officer_conn)
+linked   <- merge(
+  officer_of,
+  officers,
+  by.x = "node_id_start",
+  by.y = "node_id"
+)
+head(linked[, c("name", "node_id_end", "source_id")])
+```
+
+## ICIJ schema maps
+
+Each entity type has a pre-built schema map. Key properties:
+
+| Property ID              | Entity | Officer | Intermediary | Address |
+|--------------------------|--------|---------|--------------|---------|
+| `node_id`                | ✓      | ✓       | ✓            | ✓       |
+| `name`                   | ✓      | ✓       | ✓            |         |
+| `jurisdiction`           | ✓      |         |              |         |
+| `status`                 | ✓      |         | ✓            |         |
+| `source_id`              | ✓      | ✓       | ✓            | ✓       |
+| `countries`              | ✓      | ✓       | ✓            | ✓       |
+| `incorporation_date`     | ✓      |         |              |         |
+| `address`                | ✓      |         | ✓            | ✓       |

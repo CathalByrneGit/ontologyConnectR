@@ -1,0 +1,8 @@
+^\.git$
+^\.github$
+^.*\.Rproj$
+^\.Rproj\.user$
+^tests/testthat/_snaps$
+^\.lintr$
+^\.pre-commit-config\.yaml$
+^codecov\.yml$

@@ -1,0 +1,11 @@
+node_id,address,icij_id,valid_until,country_codes,countries,source_id,note
+40000001,"Calle 50, Marbella, Panama City, Panama",ICIJ-ADDR-0001,The Panama Papers data is current through 2010,PA,Panama,Panama Papers,
+40000002,"Wickhams Cay 1, Road Town, Tortola, British Virgin Islands",ICIJ-ADDR-0002,The Panama Papers data is current through 2010,VG,British Virgin Islands,Panama Papers,
+40000003,"PO Box 309, Ugland House, South Church Street, Grand Cayman KY1-1104",ICIJ-ADDR-0003,The Pandora Papers data is current through 2019,KY,Cayman Islands,Pandora Papers,
+40000004,"2 Avenue Charles de Gaulle, L-1653 Luxembourg",ICIJ-ADDR-0004,The Panama Papers data is current through 2010,LU,Luxembourg,Panama Papers,
+40000005,"Bahnhofstrasse 10, 8001 Zurich, Switzerland",ICIJ-ADDR-0005,The Offshore Leaks data is current through 2010,CH,Switzerland,Offshore Leaks,
+40000006,"190 Elgin Avenue, George Town, Grand Cayman KY1-9001",ICIJ-ADDR-0006,The Bahamas Leaks data is current through 2016,KY,Cayman Islands,Bahamas Leaks,
+40000007,"1 Allee Scheffer, L-2520 Luxembourg",ICIJ-ADDR-0007,The Pandora Papers data is current through 2019,LU,Luxembourg,Pandora Papers,
+40000008,"Maples Corporate Services, PO Box 309, Road Town, Tortola",ICIJ-ADDR-0008,The Panama Papers data is current through 2010,VG,British Virgin Islands,Panama Papers,
+40000009,"89 Nexus Way, Camana Bay, Grand Cayman KY1-9009",ICIJ-ADDR-0009,The Offshore Leaks data is current through 2010,KY,Cayman Islands,Offshore Leaks,
+40000010,"Freie Strasse 42, 4001 Basel, Switzerland",ICIJ-ADDR-0010,The Pandora Papers data is current through 2019,CH,Switzerland,Pandora Papers,

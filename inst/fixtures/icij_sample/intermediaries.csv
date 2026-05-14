@@ -1,0 +1,11 @@
+node_id,name,address,internal_id,source_id,valid_until,status,country_codes,countries,note
+30000001,Mossack Fonseca & Co,"Calle 54 Este, Marbella, Panama City, Panama",9100001,Panama Papers,The Panama Papers data is current through 2010,Active,PA,Panama,
+30000002,Appleby Global Group Services Ltd,"Canon's Court, 22 Victoria Street, Hamilton HM12, Bermuda",9100002,Pandora Papers,The Pandora Papers data is current through 2019,Active,BM,Bermuda,
+30000003,Portcullis TrustNet,"Suite 1901, 19F, 22 Grenville Street, St Helier, Jersey",9100003,Offshore Leaks,The Offshore Leaks data is current through 2010,Active,JE,Jersey,
+30000004,Trident Trust Company Ltd,"Trident Chambers, PO Box 146, Road Town, Tortola, BVI",9100004,Panama Papers,The Panama Papers data is current through 2010,Active,VG,British Virgin Islands,
+30000005,AMZ Associates Inc,"Ocean Centre, Montagu Foreshore, East Bay Street, Nassau, Bahamas",9100005,Bahamas Leaks,The Bahamas Leaks data is current through 2016,Inactivated,BS,Bahamas,
+30000006,Fides Business Center SA,"Rue du Rhone 14, 1204 Geneva, Switzerland",9100006,Pandora Papers,The Pandora Papers data is current through 2019,Active,CH,Switzerland,
+30000007,Alemán Cordero Galindo & Lee,"Torre Banco General, Piso 20, Calle Aquilino de la Guardia, Panama",9100007,Panama Papers,The Panama Papers data is current through 2010,Active,PA,Panama,
+30000008,Intertrust Group,"Prins Bernhardplein 200, 1097 JB Amsterdam, Netherlands",9100008,Pandora Papers,The Pandora Papers data is current through 2019,Active,NL,Netherlands,
+30000009,JTC Group,"PO Box 1075, 28 Esplanade, St Helier, Jersey JE4 2QP",9100009,Offshore Leaks,The Offshore Leaks data is current through 2010,Inactivated,JE,Jersey,
+30000010,Asiaciti Trust Singapore,"16 Collyer Quay, #30-00 Income at Raffles, Singapore 049318",9100010,Pandora Papers,The Pandora Papers data is current through 2019,Active,SG,Singapore,
