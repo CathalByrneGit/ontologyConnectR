@@ -316,7 +316,8 @@ map_to_source <- function(conn, parsed) {
   source_select <- if (is.null(parsed$select)) {
     NULL
   } else {
-    vapply(parsed$select, function(p) col_map[[p]] %||% p, character(1))
+    vapply(parsed$select, function(p) col_map[[p]] %||% p, character(1),
+           USE.NAMES = FALSE)
   }
 
   # Map filter columns to source field names
@@ -349,7 +350,12 @@ map_from_source <- function(conn, table_name, df) {
   col_map <- schema$columns  # property_id → source_field
   inv_map <- stats::setNames(names(col_map), unname(unlist(col_map)))
 
-  new_names <- vapply(names(df), function(n) inv_map[[n]] %||% n, character(1))
+  new_names <- vapply(
+    names(df),
+    function(n) if (n %in% names(inv_map)) inv_map[[n]] else n,
+    character(1),
+    USE.NAMES = FALSE
+  )
   names(df) <- new_names
   df
 }

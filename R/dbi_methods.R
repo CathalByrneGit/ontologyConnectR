@@ -57,7 +57,7 @@ setMethod("dbSendQuery", "LiveConnection", function(conn, statement, ...) {
 
 #' @export
 setMethod("dbFetch", "LiveResult", function(res, n = -1, ...) {
-  if (n < 0L || n >= nrow(res@data)) res@data else head(res@data, n)
+  if (n < 0L || n >= nrow(res@data)) res@data else utils::head(res@data, n)
 })
 
 #' @export
@@ -131,3 +131,9 @@ setMethod("show", "LiveIcijConnection", function(object) {
   ))
   invisible(object)
 })
+
+# dbplyr backend edition. LiveConnection implements the 2nd edition
+# interface (it relies on dbplyr's default SQL generation). Registered lazily
+# via @exportS3Method, so dbplyr stays in Suggests.
+#' @exportS3Method dbplyr::dbplyr_edition
+dbplyr_edition.LiveConnection <- function(con) 2L

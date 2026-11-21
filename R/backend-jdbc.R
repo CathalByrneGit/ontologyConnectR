@@ -1,3 +1,6 @@
+#' @include live_connection.R execute.R
+NULL
+
 #' Create a JDBC live connection
 #'
 #' Connects to JDBC-accessible databases using RJDBC. The dbplyr-generated
@@ -50,14 +53,46 @@ setMethod("dispatch_query", "LiveJdbcConnection", function(conn, source_query, .
 
   # Optionally translate to target dialect
   dialect <- conn@config$dialect %||% "duckdb"
-  if (dialect != "duckdb" && requireNamespace("sqlglotR", quietly = TRUE)) {
-    sql <- sqlglotR::sg_translate(sql, from = "duckdb", to = dialect)
-  }
+  sql <- translate_jdbc_sql(sql, dialect)
 
   jdbc_con <- open_jdbc_con(conn@config)
   on.exit(try(RJDBC::dbDisconnect(jdbc_con), silent = TRUE), add = TRUE)
   RJDBC::dbGetQuery(jdbc_con, sql)
 })
+
+# Translate DuckDB-dialect SQL to `dialect` with sqlglotR, if possible.
+# If sqlglotR (or its Python sqlglot module) is missing, warn once per session
+# and return the SQL unchanged.
+translate_jdbc_sql <- function(sql, dialect) {
+  if (is.null(dialect) || identical(dialect, "duckdb")) {
+    return(sql)
+  }
+  if (!requireNamespace("sqlglotR", quietly = TRUE)) {
+    cli::cli_warn(
+      c(
+        "Install {.pkg sqlglotR} to translate SQL to {.val {dialect}}; sending DuckDB SQL as is.",
+        i = "Install it with {.code remotes::install_github(\"CathalByrneGit/sqlglotR\")}."
+      ),
+      .frequency = "once",
+      .frequency_id = paste0("ontologyConnectR_no_sqlglotR_", dialect),
+      class = "ontologyConnectR_untranslated_sql"
+    )
+    return(sql)
+  }
+  if (!isTRUE(sqlglotR::sqlglot_available())) {
+    cli::cli_warn(
+      c(
+        "The Python {.pkg sqlglot} module is not available, so SQL can't be translated to {.val {dialect}}; sending DuckDB SQL as is.",
+        i = "Run {.code sqlglotR::sqlglot_install()} to install it."
+      ),
+      .frequency = "once",
+      .frequency_id = paste0("ontologyConnectR_no_sqlglot_py_", dialect),
+      class = "ontologyConnectR_untranslated_sql"
+    )
+    return(sql)
+  }
+  sqlglotR::sg_translate(sql, from = "duckdb", to = dialect)
+}
 
 open_jdbc_con <- function(cfg) {
   drv <- RJDBC::JDBC(cfg$driver_class, cfg$driver_path)

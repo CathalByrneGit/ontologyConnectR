@@ -15,6 +15,8 @@ NULL
 #' @slot cache A \code{cachem} cache object, or NULL if caching is disabled.
 #' @slot config List of source-specific configuration (base_url, auth, etc.).
 #'
+#' @name LiveConnection-class
+#' @aliases LiveConnection
 #' @export
 setClass(
   "LiveConnection",
@@ -29,19 +31,19 @@ setClass(
 
 # Subclasses --------------------------------------------------------------
 
-#' @rdname LiveConnection
+#' @rdname LiveConnection-class
 #' @export
 setClass("LiveRestConnection",  contains = "LiveConnection")
 
-#' @rdname LiveConnection
+#' @rdname LiveConnection-class
 #' @export
 setClass("LiveFhirConnection",  contains = "LiveConnection")
 
-#' @rdname LiveConnection
+#' @rdname LiveConnection-class
 #' @export
 setClass("LiveJdbcConnection",  contains = "LiveConnection")
 
-#' @rdname LiveConnection
+#' @rdname LiveConnection-class
 #' @export
 setClass("LiveIcijConnection",
   contains = "LiveConnection",

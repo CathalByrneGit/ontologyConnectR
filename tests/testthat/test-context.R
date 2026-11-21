@@ -25,8 +25,11 @@ test_that("print.OntologyContext prints informative output", {
   sm     <- make_rest_schema_map("Patient", "patients", list(id = "id"))
   conn   <- methods::new("LiveRestConnection",
     source_type = "rest", schema_map = sm, cache = NULL, config = list())
-  ctx <- ontology_context(bundle, live_connections = list(Patient = conn))
-  out <- capture.output(print(ctx))
+  expect_warning(
+    ctx <- ontology_context(bundle, live_connections = list(Patient = conn)),
+    "no live connection"
+  )
+  out <- cli::cli_fmt(print(ctx))
   expect_true(any(grepl("OntologyContext", out)))
 })
 

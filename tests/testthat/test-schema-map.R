@@ -58,3 +58,80 @@ test_that("conn_from_bundle errors on unknown connector_type", {
   ))
   expect_error(conn_from_bundle(ot), class = "rlang_error")
 })
+
+# ---- conn_from_bundle() with ontologySpecR bundles ---------------------------
+
+make_spec_patient <- function(params = list(base_url = "https://fhir.example.org",
+                                            pk_property = "patient_id"),
+                              ...) {
+  ontologySpecR::object_type(
+    "Patient",
+    properties  = list(
+      ontologySpecR::property_def("patient_id", "string"),
+      ontologySpecR::property_def("gender", "string")
+    ),
+    primary_key = "patient_id",
+    extensions  = list(live_source = list(
+      connector_type = "fhir_r4",
+      schema_map     = list(patient_id = "id", gender = "gender"),
+      params         = params
+    )),
+    ...
+  )
+}
+
+test_that("conn_from_bundle works with an ontologySpecR object type", {
+  skip_if_not_installed("ontologySpecR")
+  ot   <- make_spec_patient()
+  conn <- conn_from_bundle(ot)
+  expect_s4_class(conn, "LiveFhirConnection")
+  sm <- conn@schema_map$Patient
+  # resource defaults to object_table(): the id, not tolower(id)
+  expect_equal(sm$resource, "Patient")
+  expect_equal(sm$pk, "patient_id")
+  expect_equal(sm$columns, list(patient_id = "id", gender = "gender"))
+})
+
+test_that("conn_from_bundle resolves (bundle, object_type_id)", {
+  skip_if_not_installed("ontologySpecR")
+  b <- ontologySpecR::bundle("clinical", "1.0.0",
+                             objects = list(make_spec_patient()))
+  conn <- conn_from_bundle(b, "Patient")
+  expect_s4_class(conn, "LiveFhirConnection")
+  expect_equal(conn@config$base_url, "https://fhir.example.org")
+  expect_equal(conn@schema_map$Patient$resource, "Patient")
+})
+
+test_that("conn_from_bundle uses the object type's source table as resource", {
+  skip_if_not_installed("ontologySpecR")
+  ot <- make_spec_patient(source_kind = "table", source_table = "patients")
+  expect_equal(conn_from_bundle(ot)@schema_map$Patient$resource, "patients")
+})
+
+test_that("params$resource overrides the source table", {
+  skip_if_not_installed("ontologySpecR")
+  ot <- make_spec_patient(
+    params = list(base_url = "https://x", resource = "Person"),
+    source_kind = "table", source_table = "patients"
+  )
+  expect_equal(conn_from_bundle(ot)@schema_map$Patient$resource, "Person")
+})
+
+test_that("conn_from_bundle errors on unknown id or missing id for a bundle", {
+  skip_if_not_installed("ontologySpecR")
+  b <- ontologySpecR::bundle("clinical", "1.0.0",
+                             objects = list(make_spec_patient()))
+  expect_error(conn_from_bundle(b, "Nope"))
+  expect_error(conn_from_bundle(b), class = "rlang_error")
+})
+
+test_that("conn_from_bundle still accepts credentials as second argument", {
+  ot <- list(id = "Thing", extensions = list(live_source = list(
+    connector_type = "rest",
+    schema_map     = list(thing_id = "id"),
+    params         = list(pk_property = "thing_id")
+  )))
+  conn <- conn_from_bundle(ot, list(base_url = "https://creds.example.com"))
+  expect_equal(conn@config$base_url, "https://creds.example.com")
+  expect_equal(conn@schema_map$Thing$resource, "Thing")
+})
