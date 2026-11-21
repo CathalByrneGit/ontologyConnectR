@@ -6,3 +6,5 @@
 ^\.lintr$
 ^\.pre-commit-config\.yaml$
 ^codecov\.yml$
+^README\.Rmd$
+^LICENSE\.md$

@@ -1,3 +1,6 @@
+#' @include live_connection.R execute.R
+NULL
+
 #' Create an ICIJ Offshore Leaks live connection
 #'
 #' Loads ICIJ CSV files into an in-memory DuckDB database and returns a

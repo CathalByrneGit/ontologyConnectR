@@ -120,6 +120,11 @@ live_object_set <- function(live_con, object_type_id) {
 }
 
 #' Collect results from a LiveObjectSet (no-dplyr fallback)
+#'
+#' @param x A \code{LiveObjectSet}, as returned by \code{object_set()} when
+#'   dplyr isn't installed.
+#' @param ... Unused.
+#' @return A data frame.
 #' @export
 os_collect <- function(x, ...) UseMethod("os_collect")
 

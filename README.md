@@ -183,7 +183,9 @@ fhir_con <- live_fhir(
 
 For databases without native R DBI drivers (SAP, Teradata, some Oracle
 setups). The rewritten SQL can optionally be translated to the target dialect
-via `sqlglotR::sg_translate()`.
+via `sqlglotR::sg_translate()`. If the dialect isn't `"duckdb"` and sqlglotR (or its
+Python `sqlglot` module) isn't installed, a warning is shown and the DuckDB SQL
+is sent as is.
 
 ``` r
 jdbc_con <- live_jdbc(
@@ -286,9 +288,54 @@ list(
 )
 ```
 
-`conn_from_bundle()` constructs a connection from an `ontologySpecR` bundle
-extension, so schema maps can be stored alongside bundle definitions and
-instantiated at runtime without repeating the mapping in application code.
+`conn_from_bundle()` reads the same mapping from an `ontologySpecR` object
+type's `extensions$live_source` entry, so connector config can be stored
+alongside the bundle definition:
+
+``` r
+library(ontologySpecR)
+
+patient <- object_type(
+  "Patient",
+  properties  = list(property_def("patient_id", "string"),
+                     property_def("gender", "string")),
+  primary_key = "patient_id",
+  extensions  = list(
+    live_source = list(
+      connector_type = "fhir_r4",
+      schema_map     = list(patient_id = "id", gender = "gender"),
+      params         = list(base_url    = "https://hapi.fhir.org/baseR4",
+                            resource    = "Patient",
+                            pk_property = "patient_id")
+    )
+  )
+)
+b <- bundle("clinical", "1.0.0", objects = list(patient))
+
+# At runtime: pass the object type, or the bundle and an object type id
+fhir_con <- conn_from_bundle(patient)
+fhir_con <- conn_from_bundle(b, "Patient")
+```
+
+### `live_source` fields
+
+| Field | Required | Description |
+|---|---|---|
+| `connector_type` | yes | `"rest"`, `"fhir_r4"` or `"jdbc"`. |
+| `schema_map` | yes | Named list mapping property ids to source field names (the `columns` part of a schema map). |
+| `params$resource` | no | REST path, FHIR resource type or table name. Defaults to `ontologySpecR::object_table()`: the object type's `source$table`, else its id. `params$table_name` is accepted as a legacy alias. |
+| `params$pk_property` | no | Property id of the primary key. Default `"id"`. |
+| `params$cache_ttl` | no | Cache TTL in seconds. Default `0` (no cache). |
+| `params$base_url` | rest, fhir_r4 | Base URL. Falls back to `credentials$base_url`. |
+| `params$auth_type` | no | rest, fhir_r4: `"bearer"`, `"basic"` or `"api_key"`. The secrets come from `credentials` (`token_env_var`, `username` + `password_env_var`, `api_key_env_var`). |
+| `params$driver_class` | jdbc | Java JDBC driver class. |
+| `params$driver_path` | no | jdbc: path to the driver JAR. |
+| `params$jdbc_url` | jdbc | JDBC URL. Falls back to `credentials$jdbc_url`. |
+| `params$username`, `params$password_env_var` | no | jdbc: fall back to the same fields in `credentials`. |
+| `params$dialect` | no | jdbc: target SQL dialect for `sqlglotR::sg_translate()`. Default `"duckdb"` (no translation). |
+
+Keep secrets out of the bundle: put environment variable *names* in
+`params` or pass them in `credentials`.
 
 ## Mixed DBI + live connections
 
@@ -337,11 +384,11 @@ R/
   filters.R           translate_filters_to_r() (R-side fallback)
   schema_map.R        validate_live_schema_map(), conn_from_bundle()
   context.R           ontology_context(), object_set()
-  backends/
-    rest.R            LiveRestConnection + dispatch_query method
-    fhir.R            LiveFhirConnection + FHIRPath evaluator
-    jdbc.R            LiveJdbcConnection + dialect bridge
-    icij.R            LiveIcijConnection + DuckDB CSV loader
+  methods-doc.R       documentation for the S4 DBI / dispatch methods
+  backend-rest.R      LiveRestConnection + dispatch_query method
+  backend-fhir.R      LiveFhirConnection + FHIRPath evaluator
+  backend-jdbc.R      LiveJdbcConnection + dialect bridge (sqlglotR)
+  backend-icij.R      LiveIcijConnection + DuckDB CSV loader
 ```
 
 ## License

@@ -1,10 +1,30 @@
+#' @include live_connection.R execute.R
+NULL
+
 #' Create a REST API live connection
 #'
-#' Returns a \code{LiveRestConnection} S4 object. Call
-#' \code{ontology_context(bundle, live_connections = list(MyType = conn))}
-#' and then use \code{dplyr::tbl()} / \code{objectSetsR::object_set()} as
-#' normal. dbplyr generates SQL which is intercepted and translated to HTTP
-#' query parameters.
+#' Returns a \code{LiveRestConnection} S4 object. dbplyr generates SQL which
+#' is intercepted and translated to HTTP query parameters.
+#'
+#' Because the connection is a DBI connection, it can be used anywhere a
+#' DBI-backed table can. For example, with \code{dplyr::tbl()}, with this
+#' package's \code{ontology_context()} / \code{object_set()}, or (optionally,
+#' not a dependency) with \code{objectSetsR::object_set()}.
+#'
+#' @examples
+#' \dontrun{
+#' conn <- live_rest(
+#'   schema_map = list(Airport = list(
+#'     resource = "airports", pk = "airport_id",
+#'     columns  = list(airport_id = "id", name = "name")
+#'   )),
+#'   base_url = "https://api.example.com"
+#' )
+#' dplyr::tbl(conn, "Airport") |> dplyr::collect()
+#'
+#' # The same connection works with objectSetsR, if installed:
+#' # objectSetsR::object_set(ctx, "Airport")
+#' }
 #'
 #' @param schema_map Named list. Each name is an object type ID; each value
 #'   is \code{list(resource, pk, columns = list(property_id = source_field))}.

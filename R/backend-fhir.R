@@ -1,3 +1,6 @@
+#' @include live_connection.R execute.R
+NULL
+
 #' Create a FHIR R4 live connection
 #'
 #' Returns a \code{LiveFhirConnection} S4 object. dbplyr-generated SQL is

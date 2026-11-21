@@ -4,7 +4,7 @@
 ## usethis namespace: start
 #' @import DBI
 #' @import methods
-#' @importFrom rlang abort warn inform
+#' @importFrom rlang abort warn inform :=
 #' @importFrom cli cli_abort cli_warn cli_alert_info cli_h1 cli_h2 cli_bullets
 #' @importFrom cachem cache_mem is.key_missing
 #' @importFrom httr2 request req_perform req_url_query req_body_json

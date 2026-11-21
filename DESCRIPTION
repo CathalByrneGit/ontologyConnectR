@@ -1,13 +1,14 @@
 Package: ontologyConnectR
 Title: Live Source Connectors for Ontology Object Types
-Version: 0.2.0
+Version: 0.2.1
 Authors@R: person("Ontology", "Developer", role = c("aut", "cre"),
     email = "dev@example.com")
 Description: Backs ontology object types against live external sources
     (REST APIs, FHIR R4, JDBC databases, GraphQL) using a DBI/dbplyr
     backend architecture. Queries translate in real time to the source's
-    native query language. Integrates with objectSetsR as a drop-in
-    replacement for DBI-backed tables via the LiveConnection S4 class.
+    native query language. Because LiveConnection is a DBI connection,
+    live-backed object types can be used anywhere a DBI-backed table can,
+    for example with objectSetsR.
 Depends: R (>= 4.1)
 Imports:
     DBI,
@@ -24,26 +25,32 @@ Suggests:
     testthat (>= 3.0.0),
     httptest2,
     knitr,
+    ontologySpecR,
     rmarkdown,
+    sqlglotR,
     withr
+Remotes:
+    CathalByrneGit/sqlglotR,
+    CathalByrneGit/ontologySpecR
 License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
-RoxygenNote: 7.3.2
 Config/testthat/edition: 3
 VignetteBuilder: knitr
 Collate:
+    'auth.R'
     'ontologyConnectR-package.R'
     'live_connection.R'
-    'dbi_methods.R'
     'execute.R'
-    'filters.R'
+    'backend-fhir.R'
+    'backend-icij.R'
+    'backend-jdbc.R'
+    'backend-rest.R'
     'cache.R'
-    'auth.R'
+    'context.R'
+    'dbi_methods.R'
+    'filters.R'
+    'methods-doc.R'
     'pagination.R'
     'schema_map.R'
-    'context.R'
-    'backends/rest.R'
-    'backends/fhir.R'
-    'backends/jdbc.R'
-    'backends/icij.R'
+Config/roxygen2/version: 8.1.1
