@@ -139,3 +139,27 @@ test_that("live_execute returns empty df with correct cols for schema query", {
   expect_equal(nrow(result), 0L)
   expect_named(result, c("airport_id", "country"))
 })
+
+test_that("parse_live_query handles multi-line dbplyr SQL", {
+  sql <- 'SELECT *\nFROM "Entity"\nWHERE ("jurisdiction" = \'BVI\')'
+  p <- ontologyConnectR:::parse_live_query(sql)
+  expect_null(p$select)
+  expect_equal(p$table, "Entity")
+  expect_length(p$filters, 1L)
+
+  sql2 <- 'SELECT "name", "status"\nFROM "Entity"\nWHERE ("jurisdiction" = \'BVI\')'
+  expect_equal(ontologyConnectR:::parse_live_query(sql2)$select, c("name", "status"))
+})
+
+test_that("filter + collect on a live connection keeps all columns", {
+  skip_if_not_installed("dplyr")
+  skip_if_not_installed("dbplyr")
+  skip_if_not_installed("duckdb")
+  con <- live_icij()
+  all_cols <- names(DBI::dbGetQuery(con, 'SELECT * FROM "Entity"'))
+  res <- dplyr::tbl(con, "Entity") |>
+    dplyr::filter(jurisdiction == "BVI") |>
+    dplyr::collect()
+  expect_setequal(names(res), all_cols)
+  expect_true(all(res$jurisdiction == "BVI"))
+})

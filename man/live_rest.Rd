@@ -40,8 +40,9 @@ is intercepted and translated to HTTP query parameters.
 \details{
 Because the connection is a DBI connection, it can be used anywhere a
 DBI-backed table can. For example, with \code{dplyr::tbl()}, with this
-package's \code{ontology_context()} / \code{object_set()}, or (optionally,
-not a dependency) with \code{objectSetsR::object_set()}.
+package's \code{connect_context()} / \code{connect_object_set()}, or
+(optionally, not a dependency) with objectSetsR, called fully qualified:
+\code{objectSetsR::object_set(objectSetsR::ontology_context(...), ...)}.
 }
 \examples{
 \dontrun{
@@ -55,7 +56,8 @@ conn <- live_rest(
 dplyr::tbl(conn, "Airport") |> dplyr::collect()
 
 # The same connection works with objectSetsR, if installed:
-# objectSetsR::object_set(ctx, "Airport")
+# os_ctx <- objectSetsR::ontology_context(bundle, conn)
+# objectSetsR::object_set(os_ctx, "Airport")
 }
 
 }

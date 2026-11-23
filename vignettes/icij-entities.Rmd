@@ -1,132 +1,130 @@
 ---
-title: "ICIJ Offshore Leaks: Graph Analysis with ontologyConnectR"
+title: "ICIJ Offshore Leaks: Querying Entities with ontologyConnectR"
 output: rmarkdown::html_vignette
 vignette: >
-  %\VignetteIndexEntry{ICIJ Offshore Leaks: Graph Analysis with ontologyConnectR}
+  %\VignetteIndexEntry{ICIJ Offshore Leaks: Querying Entities with ontologyConnectR}
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(collapse = TRUE, comment = "#>", eval = FALSE)
+run <- requireNamespace("duckdb", quietly = TRUE) &&
+  requireNamespace("dplyr", quietly = TRUE) &&
+  requireNamespace("dbplyr", quietly = TRUE)
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>", eval = run)
 ```
 
 ## Overview
 
-The ICIJ Offshore Leaks database exposes millions of records from the Panama
-Papers, Pandora Papers, and other leaks. `ontologyConnectR` ships a bundled
-sample and a `conn_icij()` connector that wraps it in the standard
-OntologyConnector interface.
+The ICIJ Offshore Leaks database holds records from the Panama Papers,
+Pandora Papers and other leaks. `live_icij()` loads the ICIJ CSV files into
+an in-memory DuckDB database and exposes four object types: `Entity`,
+`Officer`, `Intermediary` and `Address`. A 20-row sample ships with the
+package, so this vignette runs without a download.
 
-This vignette shows how to query entities, filter by jurisdiction, and load
-`officer_of` edges to find the people behind shell companies.
+## Loading the connection
 
-## Loading the connectors
-
-```{r setup-conn}
+```{r conn}
 library(ontologyConnectR)
+library(dplyr, warn.conflicts = FALSE)
 
-# Uses the bundled sample — no download needed
-entity_conn      <- conn_icij("Entity")
-officer_conn     <- conn_icij("Officer")
-intermediary_conn <- conn_icij("Intermediary")
+# Uses the bundled sample
+icij_con <- live_icij()
 
-# Or point at your own ICIJ CSV directory:
-# entity_conn <- conn_icij("Entity", csv_dir = "~/data/icij")
+# Or point at the full ICIJ CSV download:
+# icij_con <- live_icij(csv_dir = "~/data/icij")
+```
+
+## Describing the object types
+
+Object types are defined with ontologySpecR. Property ids match the column
+names `live_icij()` exposes (for example `entity_id` for the ICIJ `node_id`).
+
+```{r bundle}
+library(ontologySpecR)
+
+entity <- object_type(
+  "Entity",
+  properties = list(
+    property_def("entity_id", "integer"),
+    property_def("name", "string"),
+    property_def("jurisdiction", "string"),
+    property_def("status", "string"),
+    property_def("source_id", "string")
+  ),
+  primary_key = "entity_id"
+)
+officer <- object_type(
+  "Officer",
+  properties = list(
+    property_def("officer_id", "integer"),
+    property_def("name", "string"),
+    property_def("countries", "string")
+  ),
+  primary_key = "officer_id"
+)
+
+icij_bundle <- bundle("icij", "1.0.0", objects = list(entity, officer))
 ```
 
 ## Building the context
 
 ```{r context}
-bundle <- list(
-  object_types = list(
-    Entity      = list(id = "Entity",      extensions = list()),
-    Officer     = list(id = "Officer",     extensions = list()),
-    Intermediary = list(id = "Intermediary", extensions = list())
-  ),
-  link_types = list()
+ctx <- connect_context(
+  icij_bundle,
+  live_connections = list(Entity = icij_con, Officer = icij_con),
+  strict = TRUE
 )
-
-ctx <- ontology_context(
-  bundle     = bundle,
-  connectors = list(
-    Entity       = entity_conn,
-    Officer      = officer_conn,
-    Intermediary = intermediary_conn
-  )
-)
+ctx
 ```
 
 ## Querying entities
 
+`dplyr` verbs are translated to SQL and pushed down to DuckDB when you call
+`collect()`.
+
 ```{r query-entities}
-# All Panama Papers entities in the British Virgin Islands
-bvi_panama <- object_set(ctx, "Entity") |>
-  os_filter("source_id",    "eq", "Panama Papers") |>
-  os_filter("jurisdiction", "eq", "BVI") |>
-  os_collect()
+bvi_panama <- connect_object_set(ctx, "Entity") |>
+  filter(source_id == "Panama Papers", jurisdiction == "BVI") |>
+  collect()
 
-nrow(bvi_panama)
-head(bvi_panama[, c("name", "status", "incorporation_date")])
+bvi_panama[, c("entity_id", "name", "status")]
 ```
-
-## Counting by filter
-
-```{r count}
-os_count(
-  os_filter(object_set(ctx, "Entity"), "source_id", "eq", "Panama Papers")
-)
-```
-
-## Inspecting the pending query
 
 ```{r show-query}
-os <- object_set(ctx, "Entity") |>
-  os_filter("jurisdiction", "eq", "PAN") |>
-  os_limit(100L)
-
-os_show_query(os)
-# ConnectorObjectSet [Entity]
-#   Connector: conn_icij
-#   Pending filters (1):
-#     jurisdiction eq PAN
-#   Limit: 100
+connect_object_set(ctx, "Entity") |>
+  filter(jurisdiction == "PAN") |>
+  show_query()
 ```
 
-## Loading edges for graph analysis
+## Officers of an entity
 
-The `icij_load_edges()` function loads the `edges.csv` file which records
-relationships between entities, officers, and intermediaries:
+The `edges` file records relationships between nodes. Join it to officers to
+find the people behind each entity:
 
 ```{r edges}
-edges <- icij_load_edges()   # uses the bundled sample
-
-# Find all officers connected to a specific entity
+edges_path <- system.file("fixtures", "icij_sample", "edges.csv",
+                          package = "ontologyConnectR")
+edges <- utils::read.csv(edges_path)
 officer_of <- edges[edges$rel_type == "officer_of", ]
-head(officer_of[, c("node_id_start", "node_id_end", "rel_type")])
 
-# Join with officer data
-officers <- conn_fetch(officer_conn)
-linked   <- merge(
-  officer_of,
-  officers,
-  by.x = "node_id_start",
-  by.y = "node_id"
-)
-head(linked[, c("name", "node_id_end", "source_id")])
+officers <- collect(connect_object_set(ctx, "Officer"))
+linked <- merge(officer_of, officers,
+                by.x = "node_id_start", by.y = "officer_id")
+head(linked[, c("name", "node_id_end", "rel_type")])
 ```
 
-## ICIJ schema maps
+## Using objectSetsR instead
 
-Each entity type has a pre-built schema map. Key properties:
+A `LiveConnection` is a DBI connection, so it also works with objectSetsR.
+Call objectSetsR's functions fully qualified, so it is clear which
+package's context you are using:
 
-| Property ID              | Entity | Officer | Intermediary | Address |
-|--------------------------|--------|---------|--------------|---------|
-| `node_id`                | ✓      | ✓       | ✓            | ✓       |
-| `name`                   | ✓      | ✓       | ✓            |         |
-| `jurisdiction`           | ✓      |         |              |         |
-| `status`                 | ✓      |         | ✓            |         |
-| `source_id`              | ✓      | ✓       | ✓            | ✓       |
-| `countries`              | ✓      | ✓       | ✓            | ✓       |
-| `incorporation_date`     | ✓      |         |              |         |
-| `address`                | ✓      |         | ✓            | ✓       |
+```{r objectsetsr, eval = FALSE}
+os_ctx <- objectSetsR::ontology_context(icij_bundle, icij_con)
+objectSetsR::object_set(os_ctx, "Entity")
+```
+
+objectSetsR reads the table name from `ontologySpecR::object_table()`, and
+the live connection looks it up in its schema map, so leave `source_table`
+unset (or set it to the object type id) for live-backed types.

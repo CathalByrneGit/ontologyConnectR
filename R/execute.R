@@ -106,7 +106,7 @@ parse_live_query <- function(sql_str) {
   }
 
   # SELECT columns
-  sel_raw <- sub("(?i)SELECT\\s+(.*?)\\s+FROM.*", "\\1", sql_str, perl = TRUE)
+  sel_raw <- sub("(?is)SELECT\\s+(.*?)\\s+FROM\\b.*", "\\1", sql_str, perl = TRUE)
   select <- if (trimws(sel_raw) == "*") {
     NULL
   } else {

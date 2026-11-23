@@ -33,9 +33,10 @@ dplyr::tbl(live_con, "Patient")   # lazy — no network call yet
    data.frame (columns = property IDs)
 ```
 
-Because `LiveConnection` is a valid DBI connection, **`objectSetsR` requires
-no changes** — `object_set()` returns the same `tbl_dbi` lazy object whether
-the source is a Postgres database or a live FHIR server.
+Because `LiveConnection` is a valid DBI connection, **objectSetsR needs no
+changes** to use it: pass a live connection to objectSetsR's context and
+`objectSetsR::object_set()` returns the same lazy table it would for a Postgres
+database. See [Using with objectSetsR](#using-with-objectsetsr).
 
 ## Installation
 
@@ -82,14 +83,20 @@ fhir_con <- live_fhir(
 ### 3. Register it in an ontology context
 
 ``` r
-bundle <- list(
-  object_types = list(
-    Patient = list(id = "Patient", extensions = list())
-  ),
-  link_types = list()
-)
+library(ontologySpecR)
 
-ctx <- ontology_context(
+patient <- object_type(
+  "Patient",
+  properties  = list(property_def("patient_id", "string"),
+                     property_def("family_name", "string"),
+                     property_def("given_name", "string"),
+                     property_def("birth_date", "date"),
+                     property_def("gender", "string")),
+  primary_key = "patient_id"
+)
+bundle <- bundle("clinical", "1.0.0", objects = list(patient))
+
+ctx <- connect_context(
   bundle           = bundle,
   live_connections = list(Patient = fhir_con)
 )
@@ -99,13 +106,13 @@ ctx <- ontology_context(
 
 ``` r
 # Filters pushed to FHIR server — no data fetched until collect()
-patients <- object_set(ctx, "Patient") |>
+patients <- connect_object_set(ctx, "Patient") |>
   filter(gender == "female") |>
   filter(birth_date > "1990-01-01") |>
   collect()
 
 # Inspect the SQL dbplyr generated (before translation)
-object_set(ctx, "Patient") |>
+connect_object_set(ctx, "Patient") |>
   filter(gender == "female") |>
   show_query()
 #> <SQL>
@@ -222,19 +229,24 @@ icij_con <- live_icij()
 # Or point at the full ICIJ CSV download
 # icij_con <- live_icij(csv_dir = "~/data/icij")
 
-ctx <- ontology_context(
-  bundle = list(
-    object_types = list(
-      Entity  = list(id = "Entity",  extensions = list()),
-      Officer = list(id = "Officer", extensions = list())
-    ),
-    link_types = list()
-  ),
+icij_bundle <- ontologySpecR::bundle("icij", "1.0.0", objects = list(
+  ontologySpecR::object_type("Entity",
+    properties  = list(ontologySpecR::property_def("entity_id", "integer"),
+                       ontologySpecR::property_def("jurisdiction", "string"),
+                       ontologySpecR::property_def("source_id", "string")),
+    primary_key = "entity_id"),
+  ontologySpecR::object_type("Officer",
+    properties  = list(ontologySpecR::property_def("officer_id", "integer")),
+    primary_key = "officer_id")
+))
+
+ctx <- connect_context(
+  icij_bundle,
   live_connections = list(Entity = icij_con, Officer = icij_con)
 )
 
 # Panama Papers entities incorporated in the British Virgin Islands
-bvi <- object_set(ctx, "Entity") |>
+bvi <- connect_object_set(ctx, "Entity") |>
   filter(source_id == "Panama Papers", jurisdiction == "BVI") |>
   collect()
 ```
@@ -337,12 +349,29 @@ fhir_con <- conn_from_bundle(b, "Patient")
 Keep secrets out of the bundle: put environment variable *names* in
 `params` or pass them in `credentials`.
 
+## Using with objectSetsR
+
+ontologyConnectR has its own small context, `connect_context()` /
+`connect_object_set()`. (Before 0.3.0 these were called `ontology_context()` /
+`object_set()`, the same names objectSetsR uses, so loading both packages
+masked one set of functions.) To use live connections with objectSetsR's query
+algebra instead, call objectSetsR fully qualified:
+
+``` r
+os_ctx <- objectSetsR::ontology_context(bundle, fhir_con)
+objectSetsR::object_set(os_ctx, "Patient")
+```
+
+objectSetsR takes the table name from `ontologySpecR::object_table()`, and a
+live connection looks that name up in its schema map. So for live-backed types,
+leave `source_table` unset (or equal to the object type id).
+
 ## Mixed DBI + live connections
 
 One context can hold both DBI-backed and live-backed object types:
 
 ``` r
-ctx <- ontology_context(
+ctx <- connect_context(
   bundle           = bundle,
   connection       = dbi_con,           # Postgres for most types
   live_connections = list(
@@ -383,7 +412,7 @@ R/
   cache.R             conn_invalidate(), conn_set_ttl()
   filters.R           translate_filters_to_r() (R-side fallback)
   schema_map.R        validate_live_schema_map(), conn_from_bundle()
-  context.R           ontology_context(), object_set()
+  context.R           connect_context(), connect_object_set()
   methods-doc.R       documentation for the S4 DBI / dispatch methods
   backend-rest.R      LiveRestConnection + dispatch_query method
   backend-fhir.R      LiveFhirConnection + FHIRPath evaluator

@@ -1,6 +1,6 @@
 Package: ontologyConnectR
 Title: Live Source Connectors for Ontology Object Types
-Version: 0.2.1
+Version: 0.3.0
 Authors@R: person("Ontology", "Developer", role = c("aut", "cre"),
     email = "dev@example.com")
 Description: Backs ontology object types against live external sources
@@ -16,7 +16,8 @@ Imports:
     rlang (>= 1.0.0),
     cli (>= 3.0.0),
     cachem (>= 1.0.0),
-    httr2 (>= 1.0.0)
+    httr2 (>= 1.0.0),
+    ontologySpecR (>= 0.2.1)
 Suggests:
     dbplyr,
     dplyr,
@@ -25,8 +26,8 @@ Suggests:
     testthat (>= 3.0.0),
     httptest2,
     knitr,
-    ontologySpecR,
     rmarkdown,
+    RSQLite,
     sqlglotR,
     withr
 Remotes:

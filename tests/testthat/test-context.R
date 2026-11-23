@@ -1,51 +1,124 @@
-test_that("ontology_context creates OntologyContext with live_connections", {
-  bundle <- make_test_bundle("Patient")
-  sm     <- make_rest_schema_map("Patient", "patients",
-                                  list(patient_id = "id", name = "name"))
-  conn   <- methods::new("LiveRestConnection",
+make_rest_conn <- function(type_id = "Patient") {
+  sm <- make_rest_schema_map(type_id, tolower(type_id), list(id = "id"))
+  methods::new("LiveRestConnection",
     source_type = "rest", schema_map = sm, cache = NULL, config = list())
-  ctx <- ontology_context(bundle, live_connections = list(Patient = conn))
-  expect_s3_class(ctx, "OntologyContext")
+}
+
+test_that("connect_context creates a ConnectContext with live_connections", {
+  bundle <- make_test_bundle("Patient")
+  ctx <- connect_context(bundle, live_connections = list(Patient = make_rest_conn()))
+  expect_s3_class(ctx, "ConnectContext")
+  expect_s3_class(ctx$bundle, "ontology_bundle")
   expect_named(ctx$live_connections, "Patient")
 })
 
-test_that("strict mode rejects unknown type IDs in live_connections", {
+test_that("connect_context lists every object type of spec_example_bundle()", {
+  b   <- ontologySpecR::spec_example_bundle()
+  ids <- names(ontologySpecR::bundle_object_types(b))
+  expect_gt(length(ids), 0)
+  expect_warning(
+    ctx <- connect_context(b),
+    "no live connection and no DBI connection"
+  )
+  out <- cli::cli_fmt(print(ctx))
+  expect_true(any(grepl(paste0("Object types: ", length(ids)), out)))
+  expect_true(any(grepl("DBI-backed", out)))
+  for (id in ids) expect_true(any(grepl(id, out, fixed = TRUE)))
+})
+
+test_that("connect_context accepts a bundle JSON file", {
+  b    <- make_test_bundle(c("Patient", "Encounter"))
+  path <- withr::local_tempfile(fileext = ".json")
+  ontologySpecR::write_bundle(b, path)
+  ctx <- connect_context(path, connection = "placeholder")
+  expect_setequal(names(ontologySpecR::bundle_object_types(ctx$bundle)),
+                  c("Patient", "Encounter"))
+})
+
+test_that("connect_context rejects the old object_types layout", {
+  old <- list(object_types = list(Patient = list(id = "Patient")))
+  expect_error(connect_context(old), "old .*object_types.* layout")
+})
+
+test_that("strict = TRUE rejects a live connection for a type not in the bundle", {
   bundle <- make_test_bundle("Patient")
-  sm     <- make_rest_schema_map("X", "x", list(id = "id"))
-  conn   <- methods::new("LiveRestConnection",
-    source_type = "rest", schema_map = sm, cache = NULL, config = list())
   expect_error(
-    ontology_context(bundle, live_connections = list(X = conn), strict = TRUE),
-    class = "rlang_error"
+    connect_context(bundle,
+                    live_connections = list(Patient = make_rest_conn(),
+                                            X = make_rest_conn("X")),
+                    strict = TRUE),
+    "Unknown object type IDs.*X"
+  )
+  # Not strict: allowed
+  expect_s3_class(
+    connect_context(bundle, live_connections = list(Patient = make_rest_conn(),
+                                                    X = make_rest_conn("X"))),
+    "ConnectContext"
   )
 })
 
-test_that("print.OntologyContext prints informative output", {
+test_that("print.ConnectContext prints informative output", {
   bundle <- make_test_bundle(c("Patient", "Encounter"))
-  sm     <- make_rest_schema_map("Patient", "patients", list(id = "id"))
-  conn   <- methods::new("LiveRestConnection",
-    source_type = "rest", schema_map = sm, cache = NULL, config = list())
   expect_warning(
-    ctx <- ontology_context(bundle, live_connections = list(Patient = conn)),
+    ctx <- connect_context(bundle, live_connections = list(Patient = make_rest_conn())),
     "no live connection"
   )
   out <- cli::cli_fmt(print(ctx))
-  expect_true(any(grepl("OntologyContext", out)))
+  expect_true(any(grepl("ConnectContext", out)))
+  expect_true(any(grepl("Encounter", out)))
 })
 
-test_that("object_set routes live type to dplyr::tbl via LiveConnection", {
+test_that("connect_object_set routes a live type to dplyr::tbl via LiveConnection", {
   skip_if_not_installed("dplyr")
   skip_if_not_installed("duckdb")
 
   fixture_dir <- icij_fixture_dir()
   skip_if(!nzchar(fixture_dir), "ICIJ fixture not found")
 
-  conn   <- live_icij(csv_dir = fixture_dir)
-  bundle <- list(
-    object_types = list(Entity = list(id = "Entity", extensions = list())),
-    link_types   = list()
-  )
-  ctx <- ontology_context(bundle, live_connections = list(Entity = conn))
-  os  <- object_set(ctx, "Entity")
+  conn <- live_icij(csv_dir = fixture_dir)
+  ctx  <- connect_context(make_test_bundle("Entity"),
+                          live_connections = list(Entity = conn))
+  os   <- connect_object_set(ctx, "Entity")
   expect_true(inherits(os, "tbl"))
+})
+
+test_that("connect_object_set errors on unknown object types", {
+  bundle <- make_test_bundle("Patient")
+  ctx <- connect_context(bundle, connection = "placeholder")
+  expect_error(connect_object_set(ctx, "Nope"), "Nope")
+  expect_error(connect_object_set(list(), "Patient"), "ConnectContext")
+})
+
+# ---- Deprecated names --------------------------------------------------------
+
+test_that("ontology_context() and object_set() still work and warn", {
+  skip_if_not_installed("dplyr")
+  skip_if_not_installed("RSQLite")
+  rlang::local_options(rlib_warning_verbosity = "verbose")
+
+  con <- DBI::dbConnect(RSQLite::SQLite(), ":memory:")
+  withr::defer(DBI::dbDisconnect(con))
+  DBI::dbWriteTable(con, "patient", data.frame(id = 1:2, name = c("a", "b")))
+
+  expect_warning(
+    ctx <- ontology_context(make_test_bundle("Patient"), connection = con),
+    "connect_context",
+    class = "ontologyConnectR_deprecated"
+  )
+  expect_s3_class(ctx, "ConnectContext")
+  expect_warning(
+    os <- object_set(ctx, "Patient"),
+    "connect_object_set",
+    class = "ontologyConnectR_deprecated"
+  )
+  expect_equal(nrow(dplyr::collect(os)), 2L)
+})
+
+test_that("the deprecation warning is shown once per session", {
+  rlang::local_options(rlib_warning_verbosity = "default")
+  rlang::reset_warning_verbosity("ontologyConnectR_deprecated_ontology_context")
+  bundle <- make_test_bundle("Patient")
+  expect_warning(ontology_context(bundle, connection = "placeholder"),
+                 class = "ontologyConnectR_deprecated")
+  expect_no_warning(ontology_context(bundle, connection = "placeholder"))
 })
