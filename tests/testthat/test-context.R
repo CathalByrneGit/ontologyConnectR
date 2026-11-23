@@ -89,36 +89,9 @@ test_that("connect_object_set errors on unknown object types", {
   expect_error(connect_object_set(list(), "Patient"), "ConnectContext")
 })
 
-# ---- Deprecated names --------------------------------------------------------
+# ---- Removed names -----------------------------------------------------------
 
-test_that("ontology_context() and object_set() still work and warn", {
-  skip_if_not_installed("dplyr")
-  skip_if_not_installed("RSQLite")
-  rlang::local_options(rlib_warning_verbosity = "verbose")
-
-  con <- DBI::dbConnect(RSQLite::SQLite(), ":memory:")
-  withr::defer(DBI::dbDisconnect(con))
-  DBI::dbWriteTable(con, "patient", data.frame(id = 1:2, name = c("a", "b")))
-
-  expect_warning(
-    ctx <- ontology_context(make_test_bundle("Patient"), connection = con),
-    "connect_context",
-    class = "ontologyConnectR_deprecated"
-  )
-  expect_s3_class(ctx, "ConnectContext")
-  expect_warning(
-    os <- object_set(ctx, "Patient"),
-    "connect_object_set",
-    class = "ontologyConnectR_deprecated"
-  )
-  expect_equal(nrow(dplyr::collect(os)), 2L)
-})
-
-test_that("the deprecation warning is shown once per session", {
-  rlang::local_options(rlib_warning_verbosity = "default")
-  rlang::reset_warning_verbosity("ontologyConnectR_deprecated_ontology_context")
-  bundle <- make_test_bundle("Patient")
-  expect_warning(ontology_context(bundle, connection = "placeholder"),
-                 class = "ontologyConnectR_deprecated")
-  expect_no_warning(ontology_context(bundle, connection = "placeholder"))
+test_that("the old names are not exported, so objectSetsR is not masked", {
+  exports <- getNamespaceExports("ontologyConnectR")
+  expect_false(any(c("ontology_context", "object_set", "os_collect") %in% exports))
 })

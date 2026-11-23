@@ -140,47 +140,6 @@ connect_object_set <- function(ctx, object_type_id) {
   dplyr::tbl(ctx$connection, table)
 }
 
-# Deprecated names ---------------------------------------------------------
-
-#' Deprecated context functions
-#'
-#' `ontology_context()` and `object_set()` were renamed to
-#' [connect_context()] and [connect_object_set()] in 0.3.0, because objectSetsR
-#' exports functions with the same names that do different things. They warn
-#' once per session and call the new function. They will be removed in 0.4.0.
-#'
-#' @param ... Passed to the new function.
-#' @return See [connect_context()] and [connect_object_set()].
-#' @name ontologyConnectR-deprecated
-#' @keywords internal
-NULL
-
-#' @rdname ontologyConnectR-deprecated
-#' @export
-ontology_context <- function(...) {
-  warn_deprecated_name("ontology_context", "connect_context")
-  connect_context(...)
-}
-
-#' @rdname ontologyConnectR-deprecated
-#' @export
-object_set <- function(...) {
-  warn_deprecated_name("object_set", "connect_object_set")
-  connect_object_set(...)
-}
-
-warn_deprecated_name <- function(old, new) {
-  cli::cli_warn(
-    c(
-      "{.fn ontologyConnectR::{old}} is deprecated as of ontologyConnectR 0.3.0; use {.fn {new}} instead.",
-      i = "It will be removed in 0.4.0."
-    ),
-    .frequency = "once",
-    .frequency_id = paste0("ontologyConnectR_deprecated_", old),
-    class = c("ontologyConnectR_deprecated", "deprecatedWarning")
-  )
-}
-
 # Thin wrapper used when dplyr is not available --------------------------
 
 live_object_set <- function(live_con, object_type_id) {

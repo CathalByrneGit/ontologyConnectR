@@ -12,8 +12,9 @@ functions. ontologyConnectR's versions are renamed:
 * `os_collect()` → `connect_collect()` (the no-dplyr fallback; it was only
   exported in 0.2.1)
 
-`ontology_context()` and `object_set()` still work in this version: they warn
-once per session and call the new function. They will be removed in 0.4.0.
+The old names are removed, with no deprecation period, so that loading both
+packages masks nothing. Replace calls to them with the new names.
+
 To use live connections with objectSetsR, call it fully qualified:
 `objectSetsR::object_set(objectSetsR::ontology_context(bundle, live_con), "Type")`.
 

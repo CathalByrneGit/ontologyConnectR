@@ -354,7 +354,7 @@ Keep secrets out of the bundle: put environment variable *names* in
 ontologyConnectR has its own small context, `connect_context()` /
 `connect_object_set()`. (Before 0.3.0 these were called `ontology_context()` /
 `object_set()`, the same names objectSetsR uses, so loading both packages
-masked one set of functions.) To use live connections with objectSetsR's query
+masked one set of functions. The old names were removed in 0.3.0.) To use live connections with objectSetsR's query
 algebra instead, call objectSetsR fully qualified:
 
 ``` r
