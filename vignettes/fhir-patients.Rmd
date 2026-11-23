@@ -1,8 +1,8 @@
 ---
-title: "Querying FHIR R4 Patients via objectSetsR"
+title: "Querying FHIR R4 Patients"
 output: rmarkdown::html_vignette
 vignette: >
-  %\VignetteIndexEntry{Querying FHIR R4 Patients via objectSetsR}
+  %\VignetteIndexEntry{Querying FHIR R4 Patients}
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
 ---
@@ -13,111 +13,102 @@ knitr::opts_chunk$set(collapse = TRUE, comment = "#>", eval = FALSE)
 
 ## Overview
 
-FHIR (Fast Healthcare Interoperability Resources) R4 is the dominant standard
-for healthcare data exchange. `ontologyConnectR` provides a native FHIR
-connector that:
+FHIR R4 is the dominant standard for healthcare data exchange.
+`live_fhir()`:
 
-- Pushes `eq`, `contains`, `gt`, `gte`, `lt`, `lte`, and `in` filters directly
-  to the FHIR search API — no client-side post-filtering needed.
-- Follows FHIR Bundle pagination (`Bundle.link[relation=next]`) automatically.
-- Evaluates FHIRPath expressions in `schema_map` to map nested fields to flat
-  property columns.
+- pushes `==`, `>`, `>=`, `<`, `<=`, `%in%` and `grepl()` filters to the FHIR
+  search API;
+- follows FHIR Bundle pagination (`Bundle.link[relation=next]`);
+- evaluates FHIRPath expressions in the schema map to flatten nested fields.
 
-## Creating a FHIR connector
+## Creating a FHIR connection
 
-```{r connector}
+```{r connection}
 library(ontologyConnectR)
+library(dplyr)
 
-patient_conn <- conn_fhir(
-  base_url      = "https://hapi.fhir.org/baseR4",
-  resource_type = "Patient",
-  schema_map    = list(
-    patient_id   = "id",
-    family_name  = "name.where(use='official').family",
-    given_name   = "name.where(use='official').given.first()",
-    birth_date   = "birthDate",
-    gender       = "gender",
-    deceased     = "deceased.ofType(boolean)"
-  )
+patient_con <- live_fhir(
+  schema_map = list(
+    Patient = list(
+      resource = "Patient",
+      pk       = "patient_id",
+      columns  = list(
+        patient_id  = "id",
+        family_name = "name.where(use='official').family",
+        given_name  = "name.where(use='official').given.first()",
+        birth_date  = "birthDate",
+        gender      = "gender"
+      )
+    )
+  ),
+  base_url = "https://hapi.fhir.org/baseR4"
 )
 ```
 
 ## Building the context
 
 ```{r context}
-bundle <- list(
-  object_types = list(
-    Patient = list(id = "Patient", extensions = list())
+library(ontologySpecR)
+
+patient <- object_type(
+  "Patient",
+  properties = list(
+    property_def("patient_id", "string"),
+    property_def("family_name", "string"),
+    property_def("given_name", "string"),
+    property_def("birth_date", "date"),
+    property_def("gender", "string")
   ),
-  link_types = list()
+  primary_key = "patient_id"
 )
 
-ctx <- ontology_context(bundle, connectors = list(Patient = patient_conn))
+ctx <- connect_context(
+  bundle("clinical", "1.0.0", objects = list(patient)),
+  live_connections = list(Patient = patient_con)
+)
 ```
 
 ## Querying with filter push-down
 
 ```{r query}
-# Both filters are pushed to the FHIR server: ?birthdate=gt1990-01-01&gender=female
-result <- object_set(ctx, "Patient") |>
-  os_filter("birth_date", "gt", "1990-01-01") |>
-  os_filter("gender", "eq", "female") |>
-  os_limit(20L) |>
-  os_collect()
-
-head(result)
+# Both filters go to the server: ?birthdate=gt1990-01-01&gender=female
+result <- connect_object_set(ctx, "Patient") |>
+  filter(birth_date > "1990-01-01", gender == "female") |>
+  head(20) |>
+  collect()
 ```
 
-## Filter operator mapping
+| dplyr filter | FHIR search modifier | Example URL parameter     |
+|--------------|----------------------|---------------------------|
+| `==`         | exact match          | `?family=Smith`           |
+| `grepl()`    | `:contains`          | `?family:contains=smi`    |
+| `>`          | `gt` prefix          | `?birthdate=gt1990-01-01` |
+| `>=`         | `ge` prefix          | `?birthdate=ge1990-01-01` |
+| `<`          | `lt` prefix          | `?birthdate=lt2000-01-01` |
+| `<=`         | `le` prefix          | `?birthdate=le2000-01-01` |
+| `%in%`       | comma-separated      | `?status=active,inactive` |
 
-| objectSetsR op | FHIR search modifier | Example URL parameter         |
-|----------------|----------------------|-------------------------------|
-| `eq`           | exact match          | `?family=Smith`               |
-| `contains`     | `:contains`          | `?family:contains=smi`        |
-| `gt`           | `gt` prefix          | `?birthdate=gt1990-01-01`     |
-| `gte`          | `ge` prefix          | `?birthdate=ge1990-01-01`     |
-| `lt`           | `lt` prefix          | `?birthdate=lt2000-01-01`     |
-| `lte`          | `le` prefix          | `?birthdate=le2000-01-01`     |
-| `in`           | comma-separated      | `?status=active,inactive`     |
+## Using objectSetsR instead
 
-## FHIRPath schema maps
+The connection is a DBI connection, so it also works with objectSetsR,
+called fully qualified:
 
-```{r fhirpath}
-encounter_conn <- conn_fhir(
-  base_url      = "https://hapi.fhir.org/baseR4",
-  resource_type = "Encounter",
-  schema_map    = list(
-    encounter_id = "id",
-    status       = "status",
-    class_code   = "class.code",
-    patient_ref  = "subject.reference",
-    start_date   = "period.start",
-    end_date     = "period.end"
-  )
+```{r objectsetsr}
+os_ctx <- objectSetsR::ontology_context(
+  bundle("clinical", "1.0.0", objects = list(patient)),
+  patient_con
 )
+objectSetsR::object_set(os_ctx, "Patient")
 ```
 
-## Authentication
+## Authentication and caching
 
 ```{r auth}
-secured_conn <- conn_fhir(
-  base_url      = "https://fhir.nhs.uk/R4",
-  resource_type = "Patient",
-  schema_map    = list(patient_id = "id", family_name = "name[0].family"),
-  auth          = conn_auth_bearer(env_var = "NHS_FHIR_TOKEN")
-)
-```
-
-## Caching
-
-Clinical reference data (e.g. code systems) rarely changes. Cache aggressively:
-
-```{r cache}
-# Cache for 1 hour
-concept_conn <- conn_fhir(
-  base_url      = "https://tx.fhir.org/r4",
-  resource_type = "CodeSystem",
-  schema_map    = list(id = "id", name = "name", url = "url"),
-  cache_ttl     = 3600L
+secured_con <- live_fhir(
+  schema_map = list(Patient = list(resource = "Patient", pk = "patient_id",
+                                   columns = list(patient_id = "id"))),
+  base_url  = "https://fhir.example.org/R4",
+  auth      = conn_auth_bearer(env_var = "FHIR_TOKEN"),
+  cache_ttl = 3600L   # cache for 1 hour
 )
 ```

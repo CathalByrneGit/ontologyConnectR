@@ -27,34 +27,29 @@ test_that("validate_live_schema_map rejects missing columns", {
 })
 
 test_that("conn_from_bundle constructs live_rest from bundle extension", {
-  ot <- list(
-    id = "Airport",
-    extensions = list(
-      live_source = list(
-        connector_type = "rest",
-        schema_map     = list(airport_id = "id", name = "name"),
-        params         = list(
-          base_url     = "https://api.example.com",
-          resource     = "airports",
-          pk_property  = "airport_id",
-          cache_ttl    = 0L
-        )
-      )
+  ot <- make_test_object_type("Airport", live_source = list(
+    connector_type = "rest",
+    schema_map     = list(airport_id = "id", name = "name"),
+    params         = list(
+      base_url     = "https://api.example.com",
+      resource     = "airports",
+      pk_property  = "airport_id",
+      cache_ttl    = 0L
     )
-  )
+  ))
   conn <- conn_from_bundle(ot)
   expect_s4_class(conn, "LiveRestConnection")
   expect_equal(conn@config$base_url, "https://api.example.com")
 })
 
 test_that("conn_from_bundle errors on missing live_source extension", {
-  ot <- list(id = "X", extensions = list())
+  ot <- make_test_object_type("X")
   expect_error(conn_from_bundle(ot), class = "rlang_error")
 })
 
 test_that("conn_from_bundle errors on unknown connector_type", {
-  ot <- list(id = "X", extensions = list(
-    live_source = list(connector_type = "kafka", schema_map = list(), params = list())
+  ot <- make_test_object_type("X", live_source = list(
+    connector_type = "kafka", schema_map = list(), params = list()
   ))
   expect_error(conn_from_bundle(ot), class = "rlang_error")
 })
@@ -81,7 +76,6 @@ make_spec_patient <- function(params = list(base_url = "https://fhir.example.org
 }
 
 test_that("conn_from_bundle works with an ontologySpecR object type", {
-  skip_if_not_installed("ontologySpecR")
   ot   <- make_spec_patient()
   conn <- conn_from_bundle(ot)
   expect_s4_class(conn, "LiveFhirConnection")
@@ -93,7 +87,6 @@ test_that("conn_from_bundle works with an ontologySpecR object type", {
 })
 
 test_that("conn_from_bundle resolves (bundle, object_type_id)", {
-  skip_if_not_installed("ontologySpecR")
   b <- ontologySpecR::bundle("clinical", "1.0.0",
                              objects = list(make_spec_patient()))
   conn <- conn_from_bundle(b, "Patient")
@@ -103,13 +96,11 @@ test_that("conn_from_bundle resolves (bundle, object_type_id)", {
 })
 
 test_that("conn_from_bundle uses the object type's source table as resource", {
-  skip_if_not_installed("ontologySpecR")
   ot <- make_spec_patient(source_kind = "table", source_table = "patients")
   expect_equal(conn_from_bundle(ot)@schema_map$Patient$resource, "patients")
 })
 
 test_that("params$resource overrides the source table", {
-  skip_if_not_installed("ontologySpecR")
   ot <- make_spec_patient(
     params = list(base_url = "https://x", resource = "Person"),
     source_kind = "table", source_table = "patients"
@@ -118,7 +109,6 @@ test_that("params$resource overrides the source table", {
 })
 
 test_that("conn_from_bundle errors on unknown id or missing id for a bundle", {
-  skip_if_not_installed("ontologySpecR")
   b <- ontologySpecR::bundle("clinical", "1.0.0",
                              objects = list(make_spec_patient()))
   expect_error(conn_from_bundle(b, "Nope"))
@@ -126,12 +116,12 @@ test_that("conn_from_bundle errors on unknown id or missing id for a bundle", {
 })
 
 test_that("conn_from_bundle still accepts credentials as second argument", {
-  ot <- list(id = "Thing", extensions = list(live_source = list(
+  ot <- make_test_object_type("Thing", live_source = list(
     connector_type = "rest",
     schema_map     = list(thing_id = "id"),
     params         = list(pk_property = "thing_id")
-  )))
+  ))
   conn <- conn_from_bundle(ot, list(base_url = "https://creds.example.com"))
   expect_equal(conn@config$base_url, "https://creds.example.com")
-  expect_equal(conn@schema_map$Thing$resource, "Thing")
+  expect_equal(conn@schema_map$Thing$resource, "thing")
 })

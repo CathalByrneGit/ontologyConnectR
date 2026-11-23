@@ -129,22 +129,12 @@ resolve_object_type <- function(x, object_type_id = NULL) {
   if (!is.character(object_type_id) || length(object_type_id) != 1L) {
     cli::cli_abort("{.arg object_type_id} must be a single string.")
   }
-  if (!requireNamespace("ontologySpecR", quietly = TRUE)) {
-    cli::cli_abort(c(
-      "Package {.pkg ontologySpecR} is required to look up an object type in a bundle.",
-      i = "Install it with {.code remotes::install_github(\"CathalByrneGit/ontologySpecR\")}, or pass the object type directly."
-    ))
-  }
   ontologySpecR::bundle_object_type(x, object_type_id)
 }
 
 # Default source resource for an object type: its source table, else its id.
 default_object_table <- function(object_type) {
-  if (requireNamespace("ontologySpecR", quietly = TRUE)) {
-    return(ontologySpecR::object_table(object_type))
-  }
-  # Same rule as ontologySpecR::object_table(), for plain-list object types
-  object_type$source$table %||% object_type$id
+  ontologySpecR::object_table(object_type)
 }
 
 build_auth_from_creds <- function(auth_type, credentials) {

@@ -1,3 +1,52 @@
+# ontologyConnectR 0.3.0
+
+## Renamed, to stop clashing with objectSetsR
+
+objectSetsR exports `ontology_context()`, `object_set()` and `os_collect()`
+that do different things, so loading both packages hid one package's
+functions. ontologyConnectR's versions are renamed:
+
+* `ontology_context()` → `connect_context()`
+* `object_set()` → `connect_object_set()`
+* class `OntologyContext` → `ConnectContext`
+* `os_collect()` → `connect_collect()` (the no-dplyr fallback; it was only
+  exported in 0.2.1)
+
+The old names are removed, with no deprecation period, so that loading both
+packages masks nothing. Replace calls to them with the new names.
+
+To use live connections with objectSetsR, call it fully qualified:
+`objectSetsR::object_set(objectSetsR::ontology_context(bundle, live_con), "Type")`.
+
+## Bundles are read through ontologySpecR
+
+* ontologySpecR moved from Suggests to Imports.
+* `connect_context()` calls `ontologySpecR::as_bundle()`, so it accepts a
+  bundle, a list in the spec layout, or a path to a bundle JSON file. It
+  gets the type ids from `ontologySpecR::bundle_object_types()`. Before, it
+  read `bundle$object_types`, which spec bundles don't have, so with a real
+  bundle it saw no object types and `strict = TRUE` checked nothing. The old
+  `object_types` layout now gives a clear error.
+* `connect_object_set()` looks types up with
+  `ontologySpecR::bundle_object_type()`, and builds the DBI table from
+  `ontologySpecR::object_table()` (schema-qualified when `source$schema` is
+  set), or from `ontologySpecR::object_source_sql()` for query-backed types.
+  Before, it read `ot$table_name`, which isn't part of the spec.
+
+## Other changes
+
+* Fixed `parse_live_query()` on multi-line SQL. dbplyr puts `WHERE` on its
+  own line, and the quoted column names in the `WHERE` clause were read as the
+  select list, so `filter() |> collect()` on a live connection returned only
+  the filtered columns.
+* The vignettes were written for an API that no longer existed
+  (`conn_icij()`, `os_filter()`, `connectors =`). They're rewritten for the
+  current API. The ICIJ vignette now runs against the bundled sample when
+  duckdb is installed.
+* Tests build bundles with `ontologySpecR::bundle()`, `object_type()` and
+  `link_type()`. DBI-path tests run against both DuckDB and RSQLite (RSQLite
+  added to Suggests).
+
 # ontologyConnectR 0.2.1
 
 * sqlglotR is now declared in `Suggests`, and ontologySpecR is added to

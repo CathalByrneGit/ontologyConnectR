@@ -8,112 +8,94 @@ vignette: >
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(
-  collapse = TRUE,
-  comment  = "#>",
-  eval     = FALSE
-)
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>", eval = FALSE)
 ```
 
 ## Overview
 
-`ontologyConnectR` allows you to back an ontology object type against a live
-REST API without materialising data locally. Every `os_collect()` call
-translates accumulated filters to HTTP query parameters and fetches results in
-real time.
+`live_rest()` backs an ontology object type with a live REST API, without
+copying data locally. When you call `dplyr::collect()`, the filters are
+translated to HTTP query parameters and the results are fetched in real time.
 
-## Defining the connector
+## Defining the connection
 
-```{r connector}
+```{r connection}
 library(ontologyConnectR)
+library(dplyr)
 
-patient_conn <- conn_rest(
-  base_url    = "https://api.example-hospital.org/v2",
-  list_path   = "/patients",
-  get_path    = "/patients/{pk}",
-  count_path  = "/patients/count",
-  pk_property = "patient_id",
-  schema_map  = list(
-    patient_id  = "id",
-    given_name  = "name[0].given[0]",
-    family_name = "name[0].family",
-    birth_date  = "birthDate",
-    gender      = "gender"
+patient_con <- live_rest(
+  schema_map = list(
+    Patient = list(
+      resource = "patients",
+      pk       = "patient_id",
+      columns  = list(
+        patient_id  = "id",
+        family_name = "family_name",
+        birth_date  = "birthDate",
+        gender      = "gender"
+      )
+    )
   ),
+  base_url   = "https://api.example-hospital.org/v2",
   auth       = conn_auth_bearer(env_var = "HOSPITAL_API_TOKEN"),
-  pagination = conn_pagination_link(next_path = "links.next"),
-  cache_ttl  = 300L   # Cache results for 5 minutes
+  pagination = conn_pagination_link(),
+  cache_ttl  = 300L   # cache results for 5 minutes
 )
 ```
 
-## Building the ontology context
+## Building the context
 
 ```{r context}
-bundle <- list(
-  object_types = list(
-    Patient = list(id = "Patient", extensions = list())
+library(ontologySpecR)
+
+patient <- object_type(
+  "Patient",
+  properties = list(
+    property_def("patient_id", "string"),
+    property_def("family_name", "string"),
+    property_def("birth_date", "date"),
+    property_def("gender", "string")
   ),
-  link_types = list()
+  primary_key = "patient_id"
 )
 
-ctx <- ontology_context(
-  bundle     = bundle,
-  connectors = list(Patient = patient_conn)
+ctx <- connect_context(
+  bundle("hospital", "1.0.0", objects = list(patient)),
+  live_connections = list(Patient = patient_con)
 )
 ```
 
 ## Querying
 
 ```{r query}
-# Accumulate filters — no network call yet
-os <- object_set(ctx, "Patient") |>
-  os_filter("gender", "eq", "female") |>
-  os_limit(50L)
+# Lazy: no network call yet
+os <- connect_object_set(ctx, "Patient") |>
+  filter(gender == "female") |>
+  head(50)
 
-# Show what will be fetched (human-readable, not SQL)
-os_show_query(os)
+show_query(os)
 
-# Execute — one HTTP call per page, pagination handled automatically
-patients <- os_collect(os)
-head(patients)
+# One HTTP call per page; pagination is handled automatically
+patients <- collect(os)
 ```
 
 ## Pagination
 
-`conn_pagination_link()` follows RFC 5988 `Link: <url>; rel="next"` headers
-automatically. For page-number APIs use `conn_pagination_offset()`:
+`conn_pagination_link()` follows RFC 5988 `Link: <url>; rel="next"` headers.
+For page-number APIs use `conn_pagination_offset()`:
 
 ```{r pagination}
-paginated_conn <- conn_rest(
-  base_url    = "https://api.example.com",
-  list_path   = "/records",
-  get_path    = "/records/{pk}",
-  schema_map  = list(id = "id", name = "name"),
-  pk_property = "id",
-  pagination  = conn_pagination_offset(
-    page_param = "page",
-    size_param = "per_page",
-    page_size  = 100L
-  )
-)
+conn_pagination_offset(page_param = "page", size_param = "per_page",
+                       page_size = 100L)
 ```
 
 ## Authentication
 
 ```{r auth}
-# Bearer token (e.g. JWT)
-auth_jwt <- conn_auth_bearer(env_var = "MY_JWT_TOKEN")
-
-# HTTP Basic Auth
-auth_basic <- conn_auth_basic(username = "alice",
-                               password_env_var = "MY_PASSWORD")
-
-# API Key in custom header
-auth_key <- conn_auth_api_key(header = "X-API-Key",
-                               key_env_var = "MY_API_KEY")
-
-# OAuth2 client credentials (token refresh handled automatically)
-auth_oauth <- conn_auth_oauth2(
+conn_auth_bearer(env_var = "MY_JWT_TOKEN")
+conn_auth_basic(username = "alice", password_env_var = "MY_PASSWORD")
+conn_auth_api_key(header = "X-API-Key", key_env_var = "MY_API_KEY")
+conn_auth_oauth2(
   token_url             = "https://auth.example.com/oauth/token",
   client_id             = "my-client-id",
   client_secret_env_var = "MY_CLIENT_SECRET",
@@ -123,21 +105,7 @@ auth_oauth <- conn_auth_oauth2(
 
 ## Caching
 
-Set `cache_ttl` (seconds) on the connector to avoid redundant HTTP calls:
-
 ```{r caching}
-conn <- conn_rest(
-  base_url    = "https://api.example.com",
-  list_path   = "/items",
-  get_path    = "/items/{pk}",
-  schema_map  = list(id = "id"),
-  pk_property = "id",
-  cache_ttl   = 300L   # 5-minute TTL
-)
-
-# Invalidate on demand (e.g. after a write operation)
-conn_invalidate(conn)
-
-# Change TTL without reconstructing the connector
-conn <- conn_set_ttl(conn, 60L)
+conn_invalidate(patient_con)                 # clear now, e.g. after a write
+patient_con <- conn_set_ttl(patient_con, 60L) # change the TTL
 ```
